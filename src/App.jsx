@@ -486,7 +486,7 @@ export default function App() {
 
             <button
               onClick={() => {
-                alert('Payment processed! Your website will be delivered in 5 days.');
+                alert('This is a preview. Checkout is not enabled and no payment was processed.');
                 setPage('landing');
               }}
               className="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 text-sm font-light rounded-sm transition-colors duration-300 mb-3"

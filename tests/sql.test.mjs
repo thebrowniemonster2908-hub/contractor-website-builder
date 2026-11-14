@@ -1,0 +1,18 @@
+import { PGlite } from '@electric-sql/pglite';
+import { readFile,writeFile } from 'node:fs/promises';import assert from 'node:assert/strict';
+const db=new PGlite();await db.exec('create role anon;create role authenticated;create role service_role;');
+await db.exec(await readFile(new URL('../supabase/migrations/202611140003_public_intake_limits.sql',import.meta.url),'utf8'));
+const call=async(hash)=>(await db.query("select security_claim_public_intake('clearline',$1) ok",[hash])).rows[0].ok;
+assert.equal((await Promise.all(Array.from({length:8},()=>call('a'.repeat(64))))).filter(Boolean).length,3);
+assert.equal((await Promise.all(Array.from({length:110},(_,i)=>call(i.toString(16).padStart(64,'0'))))).filter(Boolean).length,92);
+assert.equal((await db.query("select has_function_privilege('anon','security_claim_public_intake(text,text)','EXECUTE') ok")).rows[0].ok,false);
+await db.exec(`create table orders(id uuid primary key,business_name text,service_type text,phone text,email text,address text,tagline text,owner_name text,owner_bio text,owner_image text,services jsonb,testimonials jsonb,template_id text,status text,paid_at timestamptz,stripe_payment_intent text,stripe_session_id text);create table websites(id bigint generated always as identity primary key,order_id uuid references orders(id),business_name text,template_id text,data jsonb,deployed_at timestamptz,status text);`);
+await db.exec(await readFile(new URL('../supabase/migrations/202611140004_checkout_idempotency.sql',import.meta.url),'utf8'));
+await db.exec("insert into orders(id,business_name,stripe_session_id)values('ed808cbb-8758-415b-b2c7-7aba71de0296','Fixture','cs_fixture');");
+await Promise.all(Array.from({length:20},(_,i)=>db.query("select complete_builder_checkout($1,'cs_fixture','pi_fixture')",['evt_'+(i%3)])));
+assert.equal((await db.query('select count(*)::int count from websites')).rows[0].count,1);
+assert.equal((await db.query('select count(*)::int count from builder_payment_events')).rows[0].count,3);
+await assert.rejects(db.query("select complete_builder_checkout('unknown','cs_missing','pi_fixture')"));
+assert.equal((await db.query("select count(*)::int count from builder_payment_events where event_id='unknown'")).rows[0].count,0);
+assert.equal((await db.query("select has_function_privilege('authenticated','complete_builder_checkout(text,text,text)','EXECUTE') ok")).rows[0].ok,false);
+await db.close();console.log('Intake quotas and builder replay SQL fixtures passed');
